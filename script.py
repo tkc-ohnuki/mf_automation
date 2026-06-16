@@ -56,7 +56,7 @@ def download_mf_csv():
 
             print("📥 CSVを直接URLからダウンロードします...")
             with page.expect_download() as download_info:
-                page.goto("https://moneyforward.com/bs/history/csv")
+                page.evaluate("window.location.href = 'https://moneyforward.com/bs/history/csv'")
 
             download = download_info.value
             download.save_as(DOWNLOAD_PATH)
