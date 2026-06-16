@@ -54,17 +54,14 @@ def download_mf_csv():
                 page.wait_for_timeout(2000)
                 _do_login(page)
 
-            print("📥 CSVのダウンロードボタンを探しています...")
-            csv_btn_selector = "a[href*='csv']"
-            page.wait_for_selector(csv_btn_selector, state="visible", timeout=15000)
-
-            print("📥 CSVのダウンロードを開始します...")
+            print("📥 CSVを直接URLからダウンロードします...")
             with page.expect_download() as download_info:
-                page.locator(csv_btn_selector).first.click()
+                page.goto("https://moneyforward.com/bs/history/csv")
 
             download = download_info.value
             download.save_as(DOWNLOAD_PATH)
             print(f"✨ CSVをローカルに保存しました: {DOWNLOAD_PATH}")
+
             browser.close()
             return True
 
