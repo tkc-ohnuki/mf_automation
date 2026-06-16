@@ -31,6 +31,7 @@ jobs:
         MF_PW: ${{ secrets.MF_PW }}
         GOOGLE_TOKEN_JSON: ${{ secrets.GOOGLE_TOKEN_JSON }}
         DRIVE_FILE_ID: ${{ secrets.DRIVE_FILE_ID }}
+        MF_COOKIES: ${{ secrets.MF_COOKIES }}
       run: |
         uv run --with playwright \
                --with google-api-python-client \
