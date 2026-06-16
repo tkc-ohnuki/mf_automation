@@ -1,5 +1,5 @@
 import os
-import time
+import json
 from playwright.sync_api import sync_playwright
 from google.oauth2.credentials import Credentials
 from googleapiclient.discovery import build
@@ -11,6 +11,7 @@ MF_ID = os.environ.get("MF_ID")
 MF_PW = os.environ.get("MF_PW")
 GOOGLE_TOKEN_JSON = os.environ.get("GOOGLE_TOKEN_JSON")
 DRIVE_FILE_ID = os.environ.get("DRIVE_FILE_ID")
+MF_COOKIES = os.environ.get("MF_COOKIES")
 
 DOWNLOAD_PATH = "資産推移月次.csv"
 
@@ -22,52 +23,36 @@ def download_mf_csv():
             viewport={"width": 1280, "height": 800},
             user_agent="Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36"
         )
+
+        # Cookie復元（ある場合はログインスキップ）
+        if MF_COOKIES:
+            print("🍪 保存済みCookieを復元中...")
+            cookies = json.loads(MF_COOKIES)
+            context.add_cookies(cookies)
+
         page = context.new_page()
         try:
-            print("🔑 マネーフォワード Web版ログイン画面へ遷移します...")
-            page.goto("https://moneyforward.com/users/sign_in")
-            page.wait_for_load_state("load")
-            page.wait_for_load_state("networkidle")
-            page.wait_for_timeout(2000)
+            if MF_COOKIES:
+                # Cookieがある場合は直接資産推移ページへ
+                print("📊 Cookie復元済み。資産推移ページへ直接ジャンプします...")
+                page.goto("https://moneyforward.com/bs/history")
+                page.wait_for_load_state("load")
+                page.wait_for_load_state("networkidle")
+                page.wait_for_timeout(3000)
+                print(f"現在のURL: {page.url}")
 
-            # ステップ1: メールアドレスをfillで入力（clickによるdiv干渉を回避）
-            print("👤 メールアドレスを入力中...")
-            email_input = page.locator("input#mfid_user\\[email\\]")
-            email_input.wait_for(state="visible", timeout=15000)
-            email_input.fill(MF_ID)
-            page.wait_for_timeout(500)
-
-            # ステップ2: ログインボタンを1回目クリック（パスワード欄を展開させる）
-            print("🔘 次へボタンをクリック（パスワード欄を展開）...")
-            page.click("button#submitto")
-            page.wait_for_timeout(3000)
-
-            # ステップ3: パスワード欄が visible になるまで待つ
-            print("🔒 パスワード入力欄の出現を待機中...")
-            pw_input = page.locator("input#mfid_user\\[password\\]")
-            pw_input.wait_for(state="visible", timeout=15000)
-
-            # ステップ4: fillで直接入力（divブロックを回避）
-            print("🔒 パスワードを入力中...")
-            pw_input.fill(MF_PW)
-            page.wait_for_timeout(500)
-
-            # ステップ5: ログインボタンを2回目クリック（ログイン実行）
-            print("🔘 ログインボタンをクリック（ログイン実行）...")
-            page.click("button#submitto")
-
-            print("⏳ ログイン処理の完了を待機中...")
-            page.wait_for_load_state("load")
-            page.wait_for_load_state("networkidle")
-            page.wait_for_timeout(8000)
-            print(f"🔓 ログイン完了。現在のURL: {page.url}")
-
-            # --- 資産推移ページへ移動してCSVダウンロード ---
-            print("📊 資産推移ページへ直接ジャンプします...")
-            page.goto("https://moneyforward.com/bs/history")
-            page.wait_for_load_state("load")
-            page.wait_for_load_state("networkidle")
-            page.wait_for_timeout(3000)
+                # セッション切れの場合はログインにフォールバック
+                if "sign_in" in page.url or "email_otp" in page.url:
+                    print("⚠️ Cookieが無効です。通常ログインにフォールバックします...")
+                    _do_login(page)
+            else:
+                # Cookieがない場合は通常ログイン
+                print("🔑 Cookieなし。通常ログインを実行します...")
+                page.goto("https://moneyforward.com/users/sign_in")
+                page.wait_for_load_state("load")
+                page.wait_for_load_state("networkidle")
+                page.wait_for_timeout(2000)
+                _do_login(page)
 
             print("📥 CSVのダウンロードボタンを探しています...")
             csv_btn_selector = "a[href*='csv']"
@@ -101,6 +86,48 @@ def download_mf_csv():
             browser.close()
             return False
 
+
+def _do_login(page):
+    """メール・パスワードによる通常ログイン処理"""
+    # ステップ1: メールアドレス入力
+    print("👤 メールアドレスを入力中...")
+    email_input = page.locator("input#mfid_user\\[email\\]")
+    email_input.wait_for(state="visible", timeout=15000)
+    email_input.fill(MF_ID)
+    page.wait_for_timeout(500)
+
+    # ステップ2: 次へボタン（パスワード欄を展開）
+    print("🔘 次へボタンをクリック（パスワード欄を展開）...")
+    page.click("button#submitto")
+    page.wait_for_timeout(3000)
+
+    # ステップ3: パスワード入力
+    print("🔒 パスワード入力欄の出現を待機中...")
+    pw_input = page.locator("input#mfid_user\\[password\\]")
+    pw_input.wait_for(state="visible", timeout=15000)
+
+    print("🔒 パスワードを入力中...")
+    pw_input.fill(MF_PW)
+    page.wait_for_timeout(500)
+
+    # ステップ4: ログイン実行
+    print("🔘 ログインボタンをクリック（ログイン実行）...")
+    page.click("button#submitto")
+
+    print("⏳ ログイン処理の完了を待機中...")
+    page.wait_for_load_state("load")
+    page.wait_for_load_state("networkidle")
+    page.wait_for_timeout(8000)
+    print(f"🔓 ログイン完了。現在のURL: {page.url}")
+
+    # 資産推移ページへ移動
+    print("📊 資産推移ページへ直接ジャンプします...")
+    page.goto("https://moneyforward.com/bs/history")
+    page.wait_for_load_state("load")
+    page.wait_for_load_state("networkidle")
+    page.wait_for_timeout(3000)
+
+
 def upload_to_google_drive():
     if not os.path.exists(DOWNLOAD_PATH):
         print("❌ アップロード対象のファイルが存在しません。")
@@ -127,6 +154,7 @@ def upload_to_google_drive():
     ).execute()
 
     print(f"🎉 アップロード完了！ファイル名: {file.get('name')} (ID: {file.get('id')})")
+
 
 if __name__ == "__main__":
     if download_mf_csv():
